@@ -9,6 +9,7 @@ surface_dimensions = (10, 10)  # mm
 image_path = 'img/lena.png'
 light_direction = (1, 0.5, 0)
 
+# create the 'generated' directory first
 target_path = "generated/surface.obj"
 
 def create_mesh():
