@@ -2,15 +2,17 @@ from scipy.optimize import least_squares
 from PIL import Image
 import numpy as np
 from numpy import *
+import time
 
-surface_resolution = (20, 20)  # x, y
+surface_resolution = (10, 10)  # x, y
 surface_dimensions = (10, 10)  # mm
 
-image_path = 'img/lena.png'
-light_direction = (1, 0.5, 0)
+image_path = 'img/circle.png'
+light_direction = (1, 0, -0.35)
 
-# create the 'generated' directory first
-target_path = "generated/surface.obj"
+target_path = "generated/lena2.obj"
+
+max_iterations = 12
 
 def create_mesh():
     dx = surface_dimensions[0] / surface_resolution[0]
@@ -61,12 +63,13 @@ def calculate_L(x, y, vertices, lightNormal):
     n_3 = np.linalg.norm(normal_3)
     n_4 = np.linalg.norm(normal_4)
 
-    L_x, L_y, L_z = lightNormal
+    L_x, L_y, L_z = np.multiply(lightNormal, -1.0)
 
     A = (0.5*(L_x + L_y)*(1/n_1 + 1/n_4), 0.5*(-L_x + L_y)*(1/n_1 + 1/n_2), 0.5*(-L_x - L_y)*(1/n_2 + 1/n_3), 0.5*(L_x - L_y)*(1/n_3 + 1/n_4), L_x*(1/n_2 - 1/n_4) + L_y*(1/n_1 - 1/n_3))
     B = (p_lower_left[2], p_lower_right[2], p_upper_right[2], p_upper_left[2], p_center[2])
     A_transposed = np.transpose(A)
     return np.dot(A_transposed, B) + L_z*(1/n_1 + 1/n_2 + 1/n_3 + 1/n_4)
+    
 
 def compress_gradients(gradients, alpha_d=1):
     # Apply the compression function to each gradient value
@@ -93,20 +96,29 @@ def dh(x, y, vertices):
     alpha_h = 1
     return alpha_h*log(1+alpha_h*h(x, y, vertices))
 
-def solve_heightmap(vertices, I0, light_dir):
+def solve_heightmap(vertices, I0, light_dir, max_iter):
+
+    # Compress the image gradients using the specified compression function (eq 9)
+    D0_x = compress_gradients(np.gradient(I0, axis=0))
+    D0_y = compress_gradients(np.gradient(I0, axis=1))
+
+    m = surface_resolution[0]
+    n = surface_resolution[1]
+
     def compute_residuals(heights):
         vertices[:, 2] = heights
 
         # Calculate the actual radiance values (eq 6)
         L = []
-        for y in range(0, surface_resolution[1]):
+        for y in range(0, n):
             L.append([])
-            for x in range(0, surface_resolution[0]):
+            for x in range(0, m):
                 L[y].append(calculate_L(x, y, vertices, light_dir))
 
-        # Compress the image gradients using the specified compression function (eq 9)
-        D0_x = compress_gradients(np.gradient(I0, axis=1))
-        D0_y = compress_gradients(np.gradient(I0, axis=0))
+        # save the luminance values as an image for visualization (remove for performance gain)
+        im = Image.fromarray(np.asarray(np.abs(np.multiply(L, 4))))
+        im = im.convert('RGB')
+        im.save("generated/luminance.png")
 
         # Calculate the gradients of radiance values (eq 11)
         L0_x, L0_y = np.gradient(L)
@@ -114,19 +126,9 @@ def solve_heightmap(vertices, I0, light_dir):
         # Calculate squared differences between (eq 12)
         E0_x = weighs(0,0,0) * np.square(L0_x - D0_x)
         E0_y = weighs(0,0,0) * np.square(L0_y - D0_y)
-        
-        m = surface_resolution[0]
-        n = surface_resolution[1]
 
         # Calculate the global energy for fitting the gradients (eq 13)
-        E0_g = 0
-        for x in range(0, m - 1):
-            for y in range(0, n):
-                E0_g = E0_g + E0_x[y][x]
-        
-        for x in range(0, m):
-            for y in range(0, n - 1):
-                E0_g = E0_g + E0_y[y][x]
+        E0_g = np.sum(E0_x[:, :m-1]) + np.sum(E0_y[:n-1, :])
 
         # Minimize sum of squared Laplacians (eq 14)
         E_c = 0
@@ -147,14 +149,12 @@ def solve_heightmap(vertices, I0, light_dir):
                 E_h = E_h + np.square(h(x, y, vertices) - dh(x, y, vertices))
         
         # calculate the total energy 
-        E = E0_g + 0.1*E_c + 0.1*E_p + 1.0*E_h
+        E = E0_g# + 5*E_c + 5*E_p + 1.0*E_h
 
         return [E]
-    
-    max_iterations = 10
 
     # Use least squares optimization to find the optimal heights
-    result = least_squares(compute_residuals, vertices[:, 2], ftol=1e-6, xtol=1e-6, gtol=1e-6, verbose=2, max_nfev=max_iterations)
+    result = least_squares(compute_residuals, vertices[:, 2], ftol=1e-6, xtol=1e-6, gtol=1e-6, verbose=2, max_nfev=max_iter)
 
     # Retrieve the optimized heights
     vertices[:, 2] = result.x
@@ -164,12 +164,12 @@ def solve_heightmap(vertices, I0, light_dir):
 def export_3dmesh(vertices, triangles, filename):
     with open(filename, 'w') as thefile:
         for vertex in vertices:
-            thefile.write("v {0} {1} {2}\n".format(vertex[0], vertex[1], vertex[2]))
+            thefile.write("v {0} {1} {2}\n".format(vertex[0], vertex[2], -vertex[1]))
 
         for triangle in triangles:
             thefile.write("f {0} {1} {2}\n".format(triangle[0] + 1, triangle[1] + 1, triangle[2] + 1))
 
-image = Image.open(image_path)#.rotate(90)
+image = Image.open(image_path)
 image = image.resize(surface_resolution)
 
 # Convert the image to grayscale
@@ -184,6 +184,10 @@ pixel_values = np.multiply(pixel_values, 1)
 # Example usage
 vertices, triangles = create_mesh()
 
-vertices = solve_heightmap(vertices, pixel_values, light_direction)
+# Solve the heights of the vertces
+start_time = time.time()
+vertices = solve_heightmap(vertices, pixel_values, light_direction, max_iterations)
+print("--- took %s seconds ---" % round((time.time() - start_time), 2))
 
+# Generate obj file
 export_3dmesh(vertices, triangles, target_path)
