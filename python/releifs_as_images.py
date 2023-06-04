@@ -4,15 +4,15 @@ import numpy as np
 from numpy import *
 import time
 
-surface_resolution = (10, 10)  # x, y
+surface_resolution = (35, 35)  # x, y
 surface_dimensions = (10, 10)  # mm
 
-image_path = 'img/circle.png'
-light_direction = (1, 0, -0.35)
+image_path = 'img/lena.png'
+light_direction = (1, 0, -0.2)
 
-target_path = "generated/lena2.obj"
+target_path = "generated/lena.obj"
 
-max_iterations = 12
+max_iterations = 20
 
 def create_mesh():
     dx = surface_dimensions[0] / surface_resolution[0]
