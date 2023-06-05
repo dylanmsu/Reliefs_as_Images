@@ -4,15 +4,15 @@ import numpy as np
 from numpy import *
 import time
 
-surface_resolution = (35, 35)  # x, y
+surface_resolution = (20, 20)  # x, y
 surface_dimensions = (10, 10)  # mm
 
-image_path = 'img/lena.png'
+image_path = 'img/circle.png'
 light_direction = (1, 0, -0.2)
 
-target_path = "generated/lena.obj"
+target_path = "generated/circle.obj"
 
-max_iterations = 20
+max_iterations = 40
 
 def create_mesh():
     dx = surface_dimensions[0] / surface_resolution[0]
@@ -67,8 +67,7 @@ def calculate_L(x, y, vertices, lightNormal):
 
     A = (0.5*(L_x + L_y)*(1/n_1 + 1/n_4), 0.5*(-L_x + L_y)*(1/n_1 + 1/n_2), 0.5*(-L_x - L_y)*(1/n_2 + 1/n_3), 0.5*(L_x - L_y)*(1/n_3 + 1/n_4), L_x*(1/n_2 - 1/n_4) + L_y*(1/n_1 - 1/n_3))
     B = (p_lower_left[2], p_lower_right[2], p_upper_right[2], p_upper_left[2], p_center[2])
-    A_transposed = np.transpose(A)
-    return np.dot(A_transposed, B) + L_z*(1/n_1 + 1/n_2 + 1/n_3 + 1/n_4)
+    return np.dot(A, B) + L_z*(1/n_1 + 1/n_2 + 1/n_3 + 1/n_4)
     
 
 def compress_gradients(gradients, alpha_d=1):
@@ -149,7 +148,7 @@ def solve_heightmap(vertices, I0, light_dir, max_iter):
                 E_h = E_h + np.square(h(x, y, vertices) - dh(x, y, vertices))
         
         # calculate the total energy 
-        E = E0_g# + 5*E_c + 5*E_p + 1.0*E_h
+        E = E0_g + 5*E_c + 5*E_p + 1.0*E_h
 
         return [E]
 
